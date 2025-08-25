@@ -1,0 +1,16 @@
+{
+  "projects": [
+    {
+      "workspace_slug": "ibkteam",
+      "project_key": "IBK-MOBILE"
+    },
+    {
+      "workspace_slug": "ibkteam",
+      "project_key": "IBK-WEB"
+    },
+    {
+      "workspace_slug": "ibkteam",
+      "project_key": "IBK-API"
+    }
+  ]
+}

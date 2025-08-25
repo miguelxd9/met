@@ -1,0 +1,16 @@
+{
+  "repositories": [
+    {
+      "workspace_slug": "ibkteam",
+      "repository_slug": "ibk-banca-movil-ios"
+    },
+    {
+      "workspace_slug": "ibkteam",
+      "repository_slug": "ibk-banca-movil-android"
+    },
+    {
+      "workspace_slug": "ibkteam",
+      "repository_slug": "app-ibk-banca-movil-android-tmp"
+    }
+  ]
+}
