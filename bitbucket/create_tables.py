@@ -22,7 +22,7 @@ from datetime import datetime
 project_root = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, project_root)
 
-from src.database.connection import init_database, engine
+from src.database.connection import init_database, _db_manager
 from src.models.base import Base
 from src.models.workspace import Workspace
 from src.models.project import Project
@@ -44,13 +44,13 @@ def create_all_tables():
         
         # Crear todas las tablas
         print("📋 Creando tablas...")
-        Base.metadata.create_all(bind=engine)
+        Base.metadata.create_all(bind=_db_manager.engine)
         print("✅ Todas las tablas creadas exitosamente")
         
         # Verificar que se crearon correctamente
         print("🔍 Verificando tablas creadas...")
         from sqlalchemy import inspect
-        inspector = inspect(engine)
+        inspector = inspect(_db_manager.engine)
         tables = inspector.get_table_names()
         
         print(f"📊 Total de tablas creadas: {len(tables)}")
