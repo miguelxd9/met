@@ -37,10 +37,8 @@ def create_all_tables():
     print("=" * 60)
     
     try:
-        # Inicializar conexión a la base de datos
-        print("🔌 Inicializando conexión a la base de datos...")
-        init_database()
-        print("✅ Conexión inicializada")
+        # La base de datos ya debería estar inicializada desde verify_connection()
+        print("🔌 Verificando conexión a la base de datos...")
         
         # Crear todas las tablas
         print("📋 Creando tablas...")
@@ -88,6 +86,10 @@ def verify_connection():
     print("🔍 Verificando conexión a la base de datos...")
     
     try:
+        # Inicializar primero la base de datos
+        init_database()
+        
+        # Luego verificar la conexión
         from src.database.connection import get_database_session
         session = get_database_session()
         session.execute("SELECT 1")
@@ -104,7 +106,7 @@ def check_database_exists():
     print("🔍 Verificando existencia de la base de datos...")
     
     try:
-        # Intentar conectar a la base de datos específica
+        # La base de datos ya debería estar inicializada
         from src.database.connection import get_database_session
         session = get_database_session()
         session.execute("SELECT current_database()")
