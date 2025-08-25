@@ -17,6 +17,7 @@ Requisitos:
 import os
 import sys
 from datetime import datetime
+from sqlalchemy import text
 
 # Agregar el directorio raíz del proyecto al path de Python
 project_root = os.path.dirname(os.path.abspath(__file__))
@@ -92,7 +93,7 @@ def verify_connection():
         # Luego verificar la conexión
         from src.database.connection import get_database_session
         session = get_database_session()
-        session.execute("SELECT 1")
+        session.execute(text("SELECT 1"))
         session.close()
         print("✅ Conexión a la base de datos exitosa")
         return True
@@ -109,8 +110,8 @@ def check_database_exists():
         # La base de datos ya debería estar inicializada
         from src.database.connection import get_database_session
         session = get_database_session()
-        session.execute("SELECT current_database()")
-        db_name = session.execute("SELECT current_database()").scalar()
+        session.execute(text("SELECT current_database()"))
+        db_name = session.execute(text("SELECT current_database()")).scalar()
         session.close()
         print(f"✅ Conectado a la base de datos: {db_name}")
         return True
