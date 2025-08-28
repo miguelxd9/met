@@ -61,7 +61,7 @@ class Settings(BaseSettings):
     )
     
     api_retry_attempts: int = Field(
-        default=3,
+        default=1,
         env="API_RETRY_ATTEMPTS",
         description="Número de intentos de reintento en caso de error"
     )

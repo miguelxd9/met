@@ -36,9 +36,9 @@ class RateLimiter:
     
     def __init__(
         self,
-        max_requests_per_hour: int = 1000,
-        burst_limit: int = 10,
-        retry_attempts: int = 3
+        max_requests_per_hour: int = 1000, # Máximo 1000 requests por hora
+        burst_limit: int = 10, # Máximo 10 requests simultáneos
+        retry_attempts: int = 1
     ):
         """
         Inicializar rate limiter

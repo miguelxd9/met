@@ -2,15 +2,15 @@
   "repositories": [
     {
       "workspace_slug": "ibkteam",
-      "repository_slug": "ibk-banca-movil-ios"
+      "repository_slug": "smpd-ios-frontend"
     },
     {
       "workspace_slug": "ibkteam",
-      "repository_slug": "ibk-banca-movil-android"
+      "repository_slug": "SGI-delivery-information-service"
     },
     {
       "workspace_slug": "ibkteam",
-      "repository_slug": "app-ibk-banca-movil-android-tmp"
+      "repository_slug": "theshire-config-qa"
     }
   ]
 }

@@ -541,6 +541,17 @@ class BitbucketClient:
             )
             
             return pull_requests
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 400:
+                logger.warning(
+                    f"Pull requests no disponibles para el repositorio - Workspace: {workspace_slug}, Repository: {repository_slug}, Error: {str(e)}"
+                )
+                return []  # Retornar lista vacía en lugar de fallar
+            else:
+                logger.error(
+                    f"Error al obtener pull requests del repositorio - Workspace: {workspace_slug}, Repository: {repository_slug}, Page: {page}, Error: {str(e)}"
+                )
+                raise
         except Exception as e:
             logger.error(
                 f"Error al obtener pull requests del repositorio - Workspace: {workspace_slug}, Repository: {repository_slug}, Page: {page}, Error: {str(e)}"

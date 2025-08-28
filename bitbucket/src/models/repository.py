@@ -90,14 +90,19 @@ class Repository(Base):
         Returns:
             Repository: Nueva instancia del repositorio
         """
+        # Limpiar UUID removiendo llaves si las tiene
+        uuid = data.get('uuid', '')
+        if uuid and uuid.startswith('{') and uuid.endswith('}'):
+            uuid = uuid[1:-1]  # Remover llaves
+        
         return cls(
-            uuid=data.get('uuid'),
+            uuid=uuid,
             slug=data.get('slug'),
             name=data.get('name'),
             description=data.get('description'),
             is_private=data.get('is_private', True),
             language=data.get('language'),
-            bitbucket_id=data.get('id'),
+            bitbucket_id=data.get('id') or data.get('uuid'),  # Usar uuid como fallback
             avatar_url=data.get('avatar_url'),
             website=data.get('website'),
             workspace_id=workspace_id,

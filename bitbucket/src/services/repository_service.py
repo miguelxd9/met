@@ -13,7 +13,7 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
 
 from src.api.bitbucket_client import BitbucketClient
-from src.database.repositories import RepositoryRepository, CommitRepository, PullRequestRepository
+from src.database.repositories import RepositoryRepository, CommitRepository, PullRequestRepository, WorkspaceRepository, ProjectRepository
 from src.database.connection import get_db_session
 from src.utils.logger import get_logger
 
@@ -53,21 +53,13 @@ class RepositoryService:
         Returns:
             Lista de repositorios con información básica
         """
-        logger.info(
-            "Obteniendo repositorios del workspace",
-            workspace_slug=workspace_slug,
-            include_metrics=include_metrics
-        )
+        logger.info(f"Obteniendo repositorios del workspace - Workspace: {workspace_slug}, Include metrics: {include_metrics}")
         
         try:
             # Obtener repositorios desde Bitbucket
             repositories = await self.bitbucket_client.get_all_workspace_repositories(workspace_slug)
             
-            logger.info(
-                "Repositorios obtenidos desde Bitbucket",
-                workspace_slug=workspace_slug,
-                total_repositories=len(repositories)
-            )
+            logger.info(f"Repositorios obtenidos desde Bitbucket - Workspace: {workspace_slug}, Total: {len(repositories)}")
             
             if include_metrics:
                 # Enriquecer con métricas adicionales
@@ -80,11 +72,7 @@ class RepositoryService:
             return repositories
             
         except Exception as e:
-            logger.error(
-                "Error al obtener repositorios del workspace",
-                workspace_slug=workspace_slug,
-                error=str(e)
-            )
+            logger.error(f"Error al obtener repositorios del workspace - Workspace: {workspace_slug}, Error: {str(e)}")
             raise
     
     async def get_project_repositories(
@@ -104,12 +92,7 @@ class RepositoryService:
         Returns:
             Lista de repositorios del proyecto
         """
-        logger.info(
-            "Obteniendo repositorios del proyecto",
-            workspace_slug=workspace_slug,
-            project_key=project_key,
-            include_metrics=include_metrics
-        )
+        logger.info(f"Obteniendo repositorios del proyecto - Workspace: {workspace_slug}, Project: {project_key}, Include metrics: {include_metrics}")
         
         try:
             # Obtener repositorios desde Bitbucket
@@ -117,12 +100,7 @@ class RepositoryService:
                 workspace_slug, project_key
             )
             
-            logger.info(
-                "Repositorios del proyecto obtenidos desde Bitbucket",
-                workspace_slug=workspace_slug,
-                project_key=project_key,
-                total_repositories=len(repositories)
-            )
+            logger.info(f"Repositorios del proyecto obtenidos desde Bitbucket - Workspace: {workspace_slug}, Project: {project_key}, Total: {len(repositories)}")
             
             if include_metrics:
                 # Enriquecer con métricas adicionales
@@ -135,12 +113,7 @@ class RepositoryService:
             return repositories
             
         except Exception as e:
-            logger.error(
-                "Error al obtener repositorios del proyecto",
-                workspace_slug=workspace_slug,
-                project_key=project_key,
-                error=str(e)
-            )
+            logger.error(f"Error al obtener repositorios del proyecto - Workspace: {workspace_slug}, Project: {project_key}, Error: {str(e)}")
             raise
     
     async def get_repository(
@@ -160,31 +133,17 @@ class RepositoryService:
         Returns:
             Información del repositorio o None si no existe
         """
-        logger.info(
-            "Obteniendo información del repositorio",
-            workspace_slug=workspace_slug,
-            repository_slug=repository_slug,
-            include_metrics=include_metrics
-        )
+        logger.info(f"Obteniendo información del repositorio - Workspace: {workspace_slug}, Repository: {repository_slug}, Include metrics: {include_metrics}")
         
         try:
             # Obtener repositorio desde Bitbucket
             repository = await self.bitbucket_client.get_repository(workspace_slug, repository_slug)
             
             if not repository:
-                logger.warning(
-                    "Repositorio no encontrado",
-                    workspace_slug=workspace_slug,
-                    repository_slug=repository_slug
-                )
+                logger.warning(f"Repositorio no encontrado - Workspace: {workspace_slug}, Repository: {repository_slug}")
                 return None
             
-            logger.info(
-                "Repositorio obtenido desde Bitbucket",
-                workspace_slug=workspace_slug,
-                repository_slug=repository_slug,
-                name=repository.get('name')
-            )
+            logger.info(f"Repositorio obtenido desde Bitbucket - Workspace: {workspace_slug}, Repository: {repository_slug}, Name: {repository.get('name')}")
             
             if include_metrics:
                 # Enriquecer con métricas adicionales
@@ -194,12 +153,7 @@ class RepositoryService:
             return repository
             
         except Exception as e:
-            logger.error(
-                "Error al obtener repositorio",
-                workspace_slug=workspace_slug,
-                repository_slug=repository_slug,
-                error=str(e)
-            )
+            logger.error(f"Error al obtener repositorio - Workspace: {workspace_slug}, Repository: {repository_slug}, Error: {str(e)}")
             raise
     
     async def sync_repository_to_database(
@@ -219,30 +173,21 @@ class RepositoryService:
         Returns:
             Repositorio sincronizado o None si falla
         """
-        logger.info(
-            "Sincronizando repositorio a base de datos",
-            workspace_slug=workspace_slug,
-            repository_slug=repository_slug,
-            project_key=project_key
-        )
+        logger.info(f"Sincronizando repositorio a base de datos - Workspace: {workspace_slug}, Repository: {repository_slug}, Project: {project_key}")
         
         try:
             # Obtener información del repositorio desde Bitbucket
             repository_data = await self.bitbucket_client.get_repository(workspace_slug, repository_slug)
             
             if not repository_data:
-                logger.warning(
-                    "Repositorio no encontrado en Bitbucket",
-                    workspace_slug=workspace_slug,
-                    repository_slug=repository_slug
-                )
+                logger.warning(f"Repositorio no encontrado en Bitbucket - Workspace: {workspace_slug}, Repository: {repository_slug}")
                 return None
             
             # Obtener IDs de workspace y proyecto
             workspace_id = await self._get_workspace_id(workspace_slug)
             project_id = None
             if project_key:
-                project_id = await self._get_project_id(workspace_id, project_key)
+                project_id = await self._get_project_id(workspace_slug, project_key)
             
             # Guardar en base de datos
             with get_db_session() as session:
@@ -256,34 +201,24 @@ class RepositoryService:
                 )
                 
                 # Sincronizar commits
-                await self._sync_repository_commits(
-                    workspace_slug, repository_slug, repository.id, commit_repo
-                )
+                # await self._sync_repository_commits(
+                #     workspace_slug, repository_slug, repository.id, commit_repo
+                # )
                 
                 # Sincronizar pull requests
-                await self._sync_repository_pull_requests(
-                    workspace_slug, repository_slug, repository.id, pr_repo
-                )
+                # await self._sync_repository_pull_requests(
+                #     workspace_slug, repository_slug, repository.id, pr_repo
+                # )
                 
                 # Obtener resumen completo
                 repository_summary = repo_repo.get_repository_summary(repository.id)
                 
-                logger.info(
-                    "Repositorio sincronizado exitosamente",
-                    workspace_slug=workspace_slug,
-                    repository_slug=repository_slug,
-                    repository_id=repository.id
-                )
+                logger.info(f"Repositorio sincronizado exitosamente - Workspace: {workspace_slug}, Repository: {repository_slug}, ID: {repository.id}")
                 
                 return repository_summary
                 
         except Exception as e:
-            logger.error(
-                "Error al sincronizar repositorio",
-                workspace_slug=workspace_slug,
-                repository_slug=repository_slug,
-                error=str(e)
-            )
+            logger.error(f"Error al sincronizar repositorio - Workspace: {workspace_slug}, Repository: {repository_slug}, Error: {str(e)}")
             raise
     
     async def sync_workspace_repositories(
@@ -301,11 +236,7 @@ class RepositoryService:
         Returns:
             Resumen de la sincronización
         """
-        logger.info(
-            "Iniciando sincronización de repositorios del workspace",
-            workspace_slug=workspace_slug,
-            batch_size=batch_size
-        )
+        logger.info(f"Iniciando sincronización de repositorios del workspace - Workspace: {workspace_slug}, Batch size: {batch_size}")
         
         start_time = datetime.now()
         total_repositories = 0
@@ -317,22 +248,13 @@ class RepositoryService:
             repositories = await self.bitbucket_client.get_all_workspace_repositories(workspace_slug)
             total_repositories = len(repositories)
             
-            logger.info(
-                "Repositorios encontrados para sincronización",
-                workspace_slug=workspace_slug,
-                total_repositories=total_repositories
-            )
+            logger.info(f"Repositorios encontrados para sincronización - Workspace: {workspace_slug}, Total: {total_repositories}")
             
             # Procesar en lotes
             for i in range(0, total_repositories, batch_size):
                 batch = repositories[i:i + batch_size]
-                logger.info(
-                    "Procesando lote de repositorios",
-                    workspace_slug=workspace_slug,
-                    batch_number=i // batch_size + 1,
-                    batch_size=len(batch)
-                )
-                
+                logger.info(f"Procesando lote de repositorios - Workspace: {workspace_slug}, Batch: {i // batch_size + 1}, Size: {len(batch)}")
+                # Procesar cada repositorio del lote actual
                 for repo in batch:
                     try:
                         await self.sync_repository_to_database(
@@ -341,12 +263,7 @@ class RepositoryService:
                         successful_syncs += 1
                     except Exception as e:
                         failed_syncs += 1
-                        logger.error(
-                            "Error al sincronizar repositorio en lote",
-                            workspace_slug=workspace_slug,
-                            repository_slug=repo['slug'],
-                            error=str(e)
-                        )
+                        logger.error(f"Error al sincronizar repositorio en lote - Workspace: {workspace_slug}, Repository: {repo['slug']}, Error: {str(e)}")
                 
                 # Pequeña pausa entre lotes para no sobrecargar la API
                 await asyncio.sleep(1)
@@ -365,20 +282,12 @@ class RepositoryService:
                 'success_rate': (successful_syncs / total_repositories * 100) if total_repositories > 0 else 0
             }
             
-            logger.info(
-                "Sincronización de workspace completada",
-                workspace_slug=workspace_slug,
-                **sync_summary
-            )
+            logger.info(f"Sincronización de workspace completada - Workspace: {workspace_slug}, Summary: {sync_summary}")
             
             return sync_summary
             
         except Exception as e:
-            logger.error(
-                "Error en sincronización de workspace",
-                workspace_slug=workspace_slug,
-                error=str(e)
-            )
+            logger.error(f"Error en sincronización de workspace - Workspace: {workspace_slug}, Error: {str(e)}")
             raise
     
     async def _enrich_repository_data(
@@ -454,31 +363,16 @@ class RepositoryService:
                 workspace_slug, repository_slug, page=1, page_size=100
             )
             
-            logger.debug(
-                "Commits obtenidos para sincronización",
-                workspace_slug=workspace_slug,
-                repository_slug=repository_slug,
-                total_commits=len(commits)
-            )
+            logger.debug(f"Commits obtenidos para sincronización - Workspace: {workspace_slug}, Repository: {repository_slug}, Total: {len(commits)}")
             
             # Guardar commits en base de datos
             for commit_data in commits:
                 commit_repo.create_or_update(commit_data, repository_id)
             
-            logger.debug(
-                "Commits sincronizados exitosamente",
-                workspace_slug=workspace_slug,
-                repository_slug=repository_slug,
-                total_commits=len(commits)
-            )
+            logger.debug(f"Commits sincronizados exitosamente - Workspace: {workspace_slug}, Repository: {repository_slug}, Total: {len(commits)}")
             
         except Exception as e:
-            logger.error(
-                "Error al sincronizar commits",
-                workspace_slug=workspace_slug,
-                repository_slug=repository_slug,
-                error=str(e)
-            )
+            logger.error(f"Error al sincronizar commits - Workspace: {workspace_slug}, Repository: {repository_slug}, Error: {str(e)}")
             # No fallar la sincronización completa por errores en commits
     
     async def _sync_repository_pull_requests(
@@ -503,31 +397,16 @@ class RepositoryService:
                 workspace_slug, repository_slug, page=1, page_size=100
             )
             
-            logger.debug(
-                "Pull requests obtenidos para sincronización",
-                workspace_slug=workspace_slug,
-                repository_slug=repository_slug,
-                total_pull_requests=len(pull_requests)
-            )
+            logger.debug(f"Pull requests obtenidos para sincronización - Workspace: {workspace_slug}, Repository: {repository_slug}, Total: {len(pull_requests)}")
             
             # Guardar pull requests en base de datos
             for pr_data in pull_requests:
                 pr_repo.create_or_update(pr_data, repository_id)
             
-            logger.debug(
-                "Pull requests sincronizados exitosamente",
-                workspace_slug=workspace_slug,
-                repository_slug=repository_slug,
-                total_pull_requests=len(pull_requests)
-            )
+            logger.debug(f"Pull requests sincronizados exitosamente - Workspace: {workspace_slug}, Repository: {repository_slug}, Total: {len(pull_requests)}")
             
         except Exception as e:
-            logger.error(
-                "Error al sincronizar pull requests",
-                workspace_slug=workspace_slug,
-                repository_slug=repository_slug,
-                error=str(e)
-            )
+            logger.error(f"Error al sincronizar pull requests - Workspace: {workspace_slug}, Repository: {repository_slug}, Error: {str(e)}")
             # No fallar la sincronización completa por errores en pull requests
     
     async def _get_workspace_id(self, workspace_slug: str) -> int:
@@ -543,17 +422,29 @@ class RepositoryService:
         Raises:
             ValueError: Si el workspace no existe
         """
-        # Esta función debería implementarse para obtener el ID del workspace
-        # Por ahora, retornamos un valor por defecto
-        # TODO: Implementar búsqueda real en base de datos
-        return 1
+        try:
+            # Obtener información del workspace desde Bitbucket
+            workspace_data = await self.bitbucket_client.get_workspace(workspace_slug)
+            
+            if not workspace_data:
+                raise ValueError(f"Workspace {workspace_slug} no encontrado en Bitbucket")
+            
+            # Crear o actualizar workspace en base de datos
+            with get_db_session() as session:
+                workspace_repo = WorkspaceRepository(session)
+                workspace = workspace_repo.create_or_update(workspace_data)
+                return workspace.id
+                
+        except Exception as e:
+            logger.error(f"Error al obtener workspace ID - Workspace: {workspace_slug}, Error: {str(e)}")
+            raise
     
-    async def _get_project_id(self, workspace_id: int, project_key: str) -> int:
+    async def _get_project_id(self, workspace_slug: str, project_key: str) -> int:
         """
         Obtener ID del proyecto desde la base de datos
         
         Args:
-            workspace_id: ID del workspace
+            workspace_slug: Slug del workspace
             project_key: Clave del proyecto
             
         Returns:
@@ -562,7 +453,118 @@ class RepositoryService:
         Raises:
             ValueError: Si el proyecto no existe
         """
-        # Esta función debería implementarse para obtener el ID del proyecto
-        # Por ahora, retornamos un valor por defecto
-        # TODO: Implementar búsqueda real en base de datos
-        return 1
+        try:
+            # Obtener información del proyecto desde Bitbucket
+            project_data = await self.bitbucket_client.get_project(workspace_slug, project_key)
+            
+            if not project_data:
+                raise ValueError(f"Proyecto {project_key} no encontrado en Bitbucket")
+            
+            # Obtener workspace_id primero
+            workspace_id = await self._get_workspace_id(workspace_slug)
+            
+            # Crear o actualizar proyecto en base de datos
+            with get_db_session() as session:
+                project_repo = ProjectRepository(session)
+                project = project_repo.create_or_update(project_data, workspace_id)
+                return project.id
+                
+        except Exception as e:
+            logger.error(f"Error al obtener project ID - Workspace: {workspace_slug}, Project: {project_key}, Error: {str(e)}")
+            raise
+
+    async def sync_workspace_projects(
+        self,
+        workspace_slug: str,
+        batch_size: int = 10
+    ) -> Dict[str, Any]:
+        """
+        Sincronizar todos los proyectos de un workspace
+        
+        Args:
+            workspace_slug: Slug del workspace
+            batch_size: Tamaño del lote para procesamiento
+            
+        Returns:
+            Resumen de la sincronización
+        """
+        logger.info(f"Iniciando sincronización de proyectos del workspace - Workspace: {workspace_slug}, Batch size: {batch_size}")
+        
+        start_time = datetime.now()
+        total_projects = 0
+        successful_syncs = 0
+        failed_syncs = 0
+        
+        try:
+            # Obtener todos los proyectos del workspace
+            projects = await self.bitbucket_client.get_all_workspace_projects(workspace_slug)
+            total_projects = len(projects)
+            
+            logger.info(f"Proyectos encontrados para sincronización - Workspace: {workspace_slug}, Total: {total_projects}")
+            
+            # Procesar en lotes
+            for i in range(0, total_projects, batch_size):
+                batch = projects[i:i + batch_size]
+                logger.info(f"Procesando lote de proyectos - Workspace: {workspace_slug}, Batch: {i // batch_size + 1}, Size: {len(batch)}")
+                
+                # Procesar cada proyecto del lote actual
+                for project in batch:
+                    try:
+                        await self._sync_project_to_database(workspace_slug, project)
+                        successful_syncs += 1
+                        logger.debug(f"Proyecto sincronizado exitosamente - Workspace: {workspace_slug}, Project: {project.get('key')}")
+                    except Exception as e:
+                        failed_syncs += 1
+                        logger.error(f"Error al sincronizar proyecto - Workspace: {workspace_slug}, Project: {project.get('key')}, Error: {str(e)}")
+                
+                # Pausa entre lotes para respetar rate limits
+                if i + batch_size < total_projects:
+                    logger.debug(f"Pausa entre lotes - Workspace: {workspace_slug}, Esperando 1 segundo")
+                    await asyncio.sleep(1)
+            
+            # Calcular estadísticas
+            duration = datetime.now() - start_time
+            success_rate = (successful_syncs / total_projects * 100) if total_projects > 0 else 0
+            
+            sync_summary = {
+                'total_projects': total_projects,
+                'successful_syncs': successful_syncs,
+                'failed_syncs': failed_syncs,
+                'success_rate': success_rate,
+                'duration_seconds': duration.total_seconds(),
+                'workspace_slug': workspace_slug
+            }
+            
+            logger.info(f"Sincronización de proyectos completada - Workspace: {workspace_slug}, Success rate: {success_rate:.1f}%")
+            return sync_summary
+            
+        except Exception as e:
+            logger.error(f"Error en sincronización de proyectos - Workspace: {workspace_slug}, Error: {str(e)}")
+            raise
+
+    async def _sync_project_to_database(
+        self,
+        workspace_slug: str,
+        project_data: Dict[str, Any]
+    ) -> None:
+        """
+        Sincronizar un proyecto específico a la base de datos
+        
+        Args:
+            workspace_slug: Slug del workspace
+            project_data: Datos del proyecto desde Bitbucket
+        """
+        try:
+            # Obtener workspace_id
+            workspace_id = await self._get_workspace_id(workspace_slug)
+            
+            # Crear o actualizar proyecto en base de datos
+            with get_db_session() as session:
+                project_repo = ProjectRepository(session)
+                project = project_repo.create_or_update(project_data, workspace_id)
+                
+                logger.debug(f"Proyecto sincronizado - Workspace: {workspace_slug}, Project: {project.key}, ID: {project.id}")
+                
+        except Exception as e:
+            logger.error(f"Error al sincronizar proyecto - Workspace: {workspace_slug}, Project: {project_data.get('key')}, Error: {str(e)}")
+            raise

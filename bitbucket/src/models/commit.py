@@ -2,7 +2,7 @@
 Modelo para Commit de Bitbucket
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import Column, String, Text, Integer, ForeignKey, DateTime, Boolean
 from sqlalchemy.orm import relationship
 
@@ -61,13 +61,19 @@ class Commit(Base):
         Returns:
             Commit: Nueva instancia del commit
         """
-        # Parsear fechas
-        commit_date = datetime.fromisoformat(data.get('date', '').replace('Z', '+00:00'))
-        author_date = datetime.fromisoformat(data.get('author_date', '').replace('Z', '+00:00'))
+        # Parsear fechas con manejo de valores vacíos
+        commit_date_str = data.get('date', '')
+        author_date_str = data.get('author_date', '')
+        
+        commit_date = datetime.fromisoformat(commit_date_str.replace('Z', '+00:00')) if commit_date_str else datetime.now(timezone.utc)
+        author_date = datetime.fromisoformat(author_date_str.replace('Z', '+00:00')) if author_date_str else datetime.now(timezone.utc)
+        
+        # Usar el hash como bitbucket_id si el campo 'id' no está disponible
+        bitbucket_id = data.get('id') or data.get('hash', '')
         
         return cls(
             hash=data.get('hash'),
-            bitbucket_id=data.get('id'),
+            bitbucket_id=bitbucket_id,
             message=data.get('message', ''),
             author_name=data.get('author', {}).get('raw', ''),
             author_email=data.get('author', {}).get('user', {}).get('email', ''),

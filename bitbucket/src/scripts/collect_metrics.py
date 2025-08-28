@@ -48,19 +48,13 @@ async def main():
         # Obtener argumentos de línea de comandos
         workspace_slug = settings.bitbucket_workspace
         project_key = None
-        
+
         if len(sys.argv) > 1:
             workspace_slug = sys.argv[1]
         
         if len(sys.argv) > 2:
             project_key = sys.argv[2]
-        
-        logger.info(
-            "Parámetros de ejecución",
-            workspace_slug=workspace_slug,
-            project_key=project_key
-        )
-        
+        logger.info(f"Parámetros de ejecución - Workspace: {workspace_slug}, Proyecto: {project_key}")        
         # Ejecutar recolección según los parámetros
         if project_key:
             await collect_project_metrics(repository_service, workspace_slug, project_key)
@@ -99,11 +93,7 @@ async def collect_workspace_metrics(
         # Obtener repositorios del workspace
         repositories = await repository_service.get_workspace_repositories(workspace_slug)
         
-        logger.info(
-            f"Repositorios obtenidos del workspace",
-            workspace_slug=workspace_slug,
-            total_repositories=len(repositories)
-        )
+        logger.info(f"Repositorios obtenidos del workspace - Workspace: {workspace_slug}, Total: {len(repositories)}")
         
         # Mostrar resumen de repositorios
         print(f"\n📊 Resumen del Workspace: {workspace_slug}")
@@ -164,12 +154,7 @@ async def collect_project_metrics(
             workspace_slug, project_key
         )
         
-        logger.info(
-            f"Repositorios obtenidos del proyecto",
-            workspace_slug=workspace_slug,
-            project_key=project_key,
-            total_repositories=len(repositories)
-        )
+        logger.info(f"Repositorios obtenidos del proyecto - Workspace: {workspace_slug}, Project: {project_key}, Total: {len(repositories)}")
         
         # Mostrar resumen del proyecto
         print(f"\n📊 Resumen del Proyecto: {project_key}")

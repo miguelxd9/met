@@ -27,7 +27,7 @@ class Workspace(Base):
     description = Column(Text, nullable=True)
     
     # Campos de metadatos de Bitbucket
-    bitbucket_id = Column(String(100), unique=True, nullable=False)
+    bitbucket_id = Column(String(100), unique=True, nullable=True)
     website = Column(String(500), nullable=True)
     location = Column(String(255), nullable=True)
     
@@ -55,13 +55,18 @@ class Workspace(Base):
         Returns:
             Workspace: Nueva instancia del workspace
         """
+        # Limpiar UUID removiendo llaves si las tiene
+        uuid = data.get('uuid', '')
+        if uuid and uuid.startswith('{') and uuid.endswith('}'):
+            uuid = uuid[1:-1]  # Remover llaves
+        
         return cls(
-            uuid=data.get('uuid'),
+            uuid=uuid,
             slug=data.get('slug'),
             name=data.get('name'),
             is_private=data.get('is_private', True),
             description=data.get('description'),
-            bitbucket_id=data.get('id'),
+            bitbucket_id=data.get('id') or data.get('uuid'),  # Usar uuid como fallback
             website=data.get('website'),
             location=data.get('location')
         )

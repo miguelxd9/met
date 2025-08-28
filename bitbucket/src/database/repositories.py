@@ -88,26 +88,21 @@ class WorkspaceRepository(BaseRepository):
         # Buscar por UUID primero
         existing = self.get_by_uuid(workspace_data.get('uuid'))
         
+        # Si no se encuentra por UUID, buscar por slug
+        if not existing:
+            existing = self.get_by_slug(workspace_data.get('slug'))
+        
         if existing:
             # Actualizar existente
             existing.update_from_bitbucket_data(workspace_data)
-            logger.debug(
-                "Workspace actualizado",
-                workspace_id=existing.id,
-                slug=existing.slug
-            )
+            logger.debug(f"Workspace actualizado - ID: {existing.id}, Slug: {existing.slug}")
             return existing
         else:
             # Crear nuevo
             new_workspace = Workspace.from_bitbucket_data(workspace_data)
             self.add(new_workspace)
             self.commit()
-            logger.info(
-                "Nuevo workspace creado",
-                workspace_id=new_workspace.id,
-                slug=new_workspace.slug,
-                name=new_workspace.name
-            )
+            logger.info(f"Nuevo workspace creado - ID: {new_workspace.id}, Slug: {new_workspace.slug}, Name: {new_workspace.name}")
             return new_workspace
     
     def update_metrics(
@@ -122,13 +117,7 @@ class WorkspaceRepository(BaseRepository):
         if workspace:
             workspace.update_metrics(total_repos, total_projects, total_members)
             self.commit()
-            logger.debug(
-                "Métricas del workspace actualizadas",
-                workspace_id=workspace_id,
-                total_repos=total_repos,
-                total_projects=total_projects,
-                total_members=total_members
-            )
+            logger.debug(f"Métricas del workspace actualizadas - Workspace ID: {workspace_id}, Total repos: {total_repos}, Total projects: {total_projects}, Total members: {total_members}")
 
 
 class ProjectRepository(BaseRepository):
@@ -183,27 +172,21 @@ class ProjectRepository(BaseRepository):
         # Buscar por UUID primero
         existing = self.get_by_uuid(project_data.get('uuid'))
         
+        # Si no se encuentra por UUID, buscar por key
+        if not existing:
+            existing = self.get_by_key(project_data.get('key'))
+        
         if existing:
             # Actualizar existente
             existing.update_from_bitbucket_data(project_data)
-            logger.debug(
-                "Proyecto actualizado",
-                project_id=existing.id,
-                key=existing.key
-            )
+            logger.debug(f"Proyecto actualizado - ID: {existing.id}, Key: {existing.key}")
             return existing
         else:
             # Crear nuevo
             new_project = Project.from_bitbucket_data(project_data, workspace_id)
             self.add(new_project)
             self.commit()
-            logger.info(
-                "Nuevo proyecto creado",
-                project_id=new_project.id,
-                key=new_project.key,
-                name=new_project.name,
-                workspace_id=workspace_id
-            )
+            logger.info(f"Nuevo proyecto creado - ID: {new_project.id}, Key: {new_project.key}, Name: {new_project.name}, Workspace ID: {workspace_id}")
             return new_project
     
     def update_metrics(
@@ -218,13 +201,7 @@ class ProjectRepository(BaseRepository):
         if project:
             project.update_metrics(total_repos, total_commits, total_prs)
             self.commit()
-            logger.debug(
-                "Métricas del proyecto actualizadas",
-                project_id=project_id,
-                total_repos=total_repos,
-                total_commits=total_commits,
-                total_prs=total_prs
-            )
+            logger.debug(f"Métricas del proyecto actualizadas - Project ID: {project_id}, Total repos: {total_repos}, Total commits: {total_commits}, Total PRs: {total_prs}")
 
 
 class RepositoryRepository(BaseRepository):
@@ -310,14 +287,20 @@ class RepositoryRepository(BaseRepository):
         # Buscar por UUID primero
         existing = self.get_by_uuid(repository_data.get('uuid'))
         
+        # Si no se encuentra por UUID, buscar por slug
+        if not existing:
+            existing = self.get_by_slug(repository_data.get('slug'))
+        
         if existing:
             # Actualizar existente
             existing.update_from_bitbucket_data(repository_data)
-            logger.debug(
-                "Repositorio actualizado",
-                repository_id=existing.id,
-                slug=existing.slug
-            )
+            
+            # Actualizar project_id si se proporciona uno nuevo
+            if project_id is not None:
+                existing.project_id = project_id
+                logger.debug(f"Project ID actualizado para repositorio - ID: {existing.id}, Slug: {existing.slug}, Project ID: {project_id}")
+            
+            logger.debug(f"Repositorio actualizado - ID: {existing.id}, Slug: {existing.slug}")
             return existing
         else:
             # Crear nuevo
@@ -326,14 +309,7 @@ class RepositoryRepository(BaseRepository):
             )
             self.add(new_repository)
             self.commit()
-            logger.info(
-                "Nuevo repositorio creado",
-                repository_id=new_repository.id,
-                slug=new_repository.slug,
-                name=new_repository.name,
-                workspace_id=workspace_id,
-                project_id=project_id
-            )
+            logger.info(f"Nuevo repositorio creado - ID: {new_repository.id}, Slug: {new_repository.slug}, Name: {new_repository.name}, Workspace ID: {workspace_id}, Project ID: {project_id}")
             return new_repository
     
     def update_devops_compliance(
@@ -346,11 +322,7 @@ class RepositoryRepository(BaseRepository):
         if repository:
             repository.update_devops_compliance(**compliance_data)
             self.commit()
-            logger.debug(
-                "Cumplimiento DevOps del repositorio actualizado",
-                repository_id=repository_id,
-                compliance_data=compliance_data
-            )
+            logger.debug(f"Cumplimiento DevOps del repositorio actualizado - Repository ID: {repository_id}, Compliance data: {compliance_data}")
     
     def get_repository_summary(self, repository_id: int) -> Optional[Dict[str, Any]]:
         """Obtener resumen completo del repositorio"""
@@ -456,23 +428,14 @@ class CommitRepository(BaseRepository):
         if existing:
             # Actualizar existente
             existing.update_from_bitbucket_data(commit_data)
-            logger.debug(
-                "Commit actualizado",
-                commit_id=existing.id,
-                hash=existing.hash[:8]
-            )
+            logger.debug(f"Commit actualizado - ID: {existing.id}, Hash: {existing.hash[:8]}")
             return existing
         else:
             # Crear nuevo
             new_commit = Commit.from_bitbucket_data(commit_data, repository_id)
             self.add(new_commit)
             self.commit()
-            logger.debug(
-                "Nuevo commit creado",
-                commit_id=new_commit.id,
-                hash=new_commit.hash[:8],
-                repository_id=repository_id
-            )
+            logger.debug(f"Nuevo commit creado - ID: {new_commit.id}, Hash: {new_commit.hash[:8]}, Repository ID: {repository_id}")
             return new_commit
     
     def get_commit_statistics(self, repository_id: int) -> Dict[str, Any]:
@@ -568,24 +531,14 @@ class PullRequestRepository(BaseRepository):
         if existing:
             # Actualizar existente
             existing.update_from_bitbucket_data(pr_data)
-            logger.debug(
-                "Pull request actualizado",
-                pr_id=existing.id,
-                bitbucket_id=existing.bitbucket_id
-            )
+            logger.debug(f"Pull request actualizado - ID: {existing.id}, Bitbucket ID: {existing.bitbucket_id}")
             return existing
         else:
             # Crear nuevo
             new_pr = PullRequest.from_bitbucket_data(pr_data, repository_id)
             self.add(new_pr)
             self.commit()
-            logger.info(
-                "Nuevo pull request creado",
-                pr_id=new_pr.id,
-                bitbucket_id=new_pr.bitbucket_id,
-                title=new_pr.title,
-                repository_id=repository_id
-            )
+            logger.info(f"Nuevo pull request creado - ID: {new_pr.id}, Bitbucket ID: {new_pr.bitbucket_id}, Title: {new_pr.title}, Repository ID: {repository_id}")
             return new_pr
     
     def get_pull_request_statistics(self, repository_id: int) -> Dict[str, Any]:

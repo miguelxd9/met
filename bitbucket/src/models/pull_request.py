@@ -2,7 +2,7 @@
 Modelo para PullRequest de Bitbucket
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import Column, String, Text, Integer, ForeignKey, DateTime, Boolean, Enum
 from sqlalchemy.orm import relationship
 import enum
@@ -72,9 +72,12 @@ class PullRequest(Base):
         Returns:
             PullRequest: Nueva instancia del pull request
         """
-        # Parsear fechas
-        created_date = datetime.fromisoformat(data.get('created_on', '').replace('Z', '+00:00'))
-        updated_date = datetime.fromisoformat(data.get('updated_on', '').replace('Z', '+00:00'))
+        # Parsear fechas con manejo de valores vacíos
+        created_date_str = data.get('created_on', '')
+        updated_date_str = data.get('updated_on', '')
+        
+        created_date = datetime.fromisoformat(created_date_str.replace('Z', '+00:00')) if created_date_str else datetime.now(timezone.utc)
+        updated_date = datetime.fromisoformat(updated_date_str.replace('Z', '+00:00')) if updated_date_str else datetime.now(timezone.utc)
         
         closed_date = None
         if data.get('closed_on'):
@@ -93,8 +96,11 @@ class PullRequest(Base):
         elif data.get('state') == 'SUPERSEDED':
             state = PullRequestState.SUPERSEDED
         
+        # Usar un valor por defecto si el bitbucket_id no está disponible
+        bitbucket_id = data.get('id') or f"pr_{data.get('title', '').replace(' ', '_')[:20]}_{created_date.strftime('%Y%m%d')}"
+        
         return cls(
-            bitbucket_id=data.get('id'),
+            bitbucket_id=bitbucket_id,
             title=data.get('title', ''),
             description=data.get('description'),
             state=state,

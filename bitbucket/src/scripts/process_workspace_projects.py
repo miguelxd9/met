@@ -3,245 +3,122 @@
 Script para procesar todos los proyectos del workspace configurado
 
 Este script obtiene todos los proyectos del workspace desde Bitbucket
-y los guarda/actualiza en la base de datos PostgreSQL.
+y los guarda/actualiza en la base de datos PostgreSQL usando las funciones
+centralizadas de RepositoryService con todas las bondades del procesamiento
+avanzado (rate limiting, batching, pausas automáticas).
 """
 
-import os
-import sys
 import asyncio
-from datetime import datetime, timezone
-from typing import Dict, List, Any
+import sys
+import os
+from pathlib import Path
+from typing import Optional
 
 # Agregar el directorio raíz del proyecto al path de Python
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, project_root)
 
-from src.database.connection import init_database, get_database_session
-from src.models.project import Project
-from src.models.workspace import Workspace
 from src.api.bitbucket_client import BitbucketClient
+from src.services.repository_service import RepositoryService
+from src.database.connection import init_database, close_database
+from src.utils.logger import get_logger
 from src.config.settings import get_settings
 
 
-class WorkspaceProjectsProcessor:
-    """
-    Clase para procesar todos los proyectos del workspace
-    """
-    
-    def __init__(self):
-        """Inicializar el procesador de proyectos del workspace"""
-        self.client = BitbucketClient()
-        self.settings = get_settings()
-        self.stats = {
-            'total_processed': 0,
-            'total_created': 0,
-            'total_updated': 0,
-            'total_errors': 0,
-            'errors': []
-        }
-    
-    async def process_workspace_projects(self, workspace_slug: str) -> bool:
-        """
-        Procesar todos los proyectos del workspace
-        
-        Args:
-            workspace_slug: Slug del workspace
-            
-        Returns:
-            True si se procesaron exitosamente
-        """
-        print("🚀 Iniciando procesamiento de proyectos del workspace...")
-        print("=" * 60)
-        
-        # Inicializar base de datos
-        print("🗄️  Inicializando base de datos...")
-        init_database()
-        print("✅ Base de datos inicializada")
-        
-        # Obtener sesión de base de datos
-        print("🔌 Obteniendo sesión de base de datos...")
-        session = get_database_session()
-        print("✅ Sesión obtenida")
-        print()
-        
-        try:
-            # Obtener workspace o crearlo si no existe
-            print("🏢 Procesando workspace...")
-            workspace = await self._process_workspace(workspace_slug, session)
-            if not workspace:
-                return False
-            
-            # Obtener todos los proyectos del workspace desde Bitbucket
-            print(f"📁 Obteniendo proyectos del workspace: {workspace_slug}")
-            projects_data = await self.client.get_all_workspace_projects(workspace_slug)
-            
-            if not projects_data:
-                print("❌ No se encontraron proyectos en el workspace")
-                return False
-            
-            total_projects = len(projects_data)
-            print(f"✅ Encontrados {total_projects} proyectos para procesar")
-            print()
-            
-            # Procesar cada proyecto
-            for i, project_data in enumerate(projects_data, 1):
-                progress = (i / total_projects) * 100
-                print(f"📋 [{i}/{total_projects}] Procesando proyecto... ({progress:.1f}%)")
-                
-                success = await self._process_project(project_data, workspace.id, session)
-                if success:
-                    self.stats['total_processed'] += 1
-                else:
-                    self.stats['total_errors'] += 1
-                
-                print()  # Línea en blanco para separar proyectos
-            
-            # Mostrar resumen final
-            print("🎯 RESUMEN DEL PROCESAMIENTO")
-            print("=" * 40)
-            print(f"📊 Total procesados: {self.stats['total_processed']}")
-            print(f"🆕 Total creados: {self.stats['total_created']}")
-            print(f"🔄 Total actualizados: {self.stats['total_updated']}")
-            print(f"❌ Total errores: {self.stats['total_errors']}")
-            
-            if self.stats['errors']:
-                print("\n⚠️  Errores encontrados:")
-                for error in self.stats['errors']:
-                    print(f"   • {error}")
-            
-            print("\n🎉 ¡Procesamiento completado!")
-            return True
-            
-        except Exception as e:
-            print(f"❌ Error durante el procesamiento: {e}")
-            session.rollback()
-            return False
-        finally:
-            session.close()
-            print("🔌 Sesión de base de datos cerrada")
-    
-    async def _process_workspace(self, workspace_slug: str, session) -> Workspace:
-        """
-        Crear o actualizar workspace
-        
-        Args:
-            workspace_slug: Slug del workspace
-            session: Sesión de base de datos
-            
-        Returns:
-            Instancia del workspace
-        """
-        workspace = session.query(Workspace).filter_by(slug=workspace_slug).first()
-        
-        if not workspace:
-            # Crear nuevo workspace
-            import uuid
-            workspace_uuid = str(uuid.uuid4())
-            workspace = Workspace(
-                uuid=workspace_uuid,
-                slug=workspace_slug,
-                name=workspace_slug.title(),
-                bitbucket_id=workspace_slug,
-                is_private=True,
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc)
-            )
-            session.add(workspace)
-            session.commit()
-            print(f"      ✅ Workspace '{workspace_slug}' creado")
-        else:
-            # Actualizar workspace existente
-            workspace.updated_at = datetime.now(timezone.utc)
-            session.commit()
-            print(f"      ✅ Workspace '{workspace_slug}' encontrado")
-        
-        return workspace
-    
-    async def _process_project(self, project_data: Dict[str, Any], workspace_id: int, session) -> bool:
-        """
-        Procesar un proyecto individual
-        
-        Args:
-            project_data: Datos del proyecto desde Bitbucket
-            workspace_id: ID del workspace
-            session: Sesión de base de datos
-            
-        Returns:
-            True si se procesó exitosamente, False en caso contrario
-        """
-        project_uuid = project_data.get('uuid', '').strip('{}')
-        project_key = project_data.get('key')
-        project_name = project_data.get('name', project_key)
-        
-        print(f"   🔍 Procesando: {project_name}")
-        print(f"      🆔 UUID: {project_uuid}")
-        print(f"      🔑 Key: {project_key}")
-        
-        try:
-            # Buscar proyecto por UUID
-            project = session.query(Project).filter_by(uuid=project_uuid).first()
-            
-            if project:
-                # Actualizar proyecto existente
-                project.name = project_name
-                project.key = project_key
-                project.description = project_data.get('description')
-                project.is_private = project_data.get('is_private', True)
-                project.updated_at = datetime.now(timezone.utc)
-                session.commit()
-                print(f"      ✅ Project '{project_name}' actualizado")
-                self.stats['total_updated'] += 1
-            else:
-                # Crear nuevo proyecto
-                project = Project(
-                    uuid=project_uuid,
-                    name=project_name,
-                    key=project_key,
-                    description=project_data.get('description'),
-                    is_private=project_data.get('is_private', True),
-                    workspace_id=workspace_id,
-                    created_at=datetime.now(timezone.utc),
-                    updated_at=datetime.now(timezone.utc)
-                )
-                session.add(project)
-                session.commit()
-                print(f"      ✅ Project '{project_name}' creado")
-                self.stats['total_created'] += 1
-            
-            return True
-            
-        except Exception as e:
-            print(f"      ❌ Error: {e}")
-            self.stats['errors'].append(f"Error en proyecto {project_name}: {str(e)}")
-            return False
-
-
 async def main():
-    """Función principal"""
-    print("🚀 Procesador de Proyectos del Workspace")
-    print("=" * 60)
-    print()
-    
+    """Función principal del script"""
     try:
-        # Obtener configuración
+        # Inicializar configuración
         settings = get_settings()
+        logger = get_logger(__name__)
+        
+        logger.info("Iniciando procesamiento de proyectos del workspace")
+        
+        # Obtener workspace desde configuración o argumentos
         workspace_slug = settings.bitbucket_workspace
         
-        processor = WorkspaceProjectsProcessor()
-        success = await processor.process_workspace_projects(workspace_slug)
+        if len(sys.argv) > 1:
+            workspace_slug = sys.argv[1]
         
-        if success:
-            print("\n✅ Proceso completado exitosamente")
-            print("   Los proyectos han sido guardados/actualizados en la base de datos")
+        logger.info(f"Workspace a procesar: {workspace_slug}")
+        
+        # Inicializar base de datos
+        logger.info("Inicializando base de datos...")
+        init_database()
+        logger.info("Base de datos inicializada")
+        
+        # Inicializar cliente de Bitbucket
+        logger.info("Inicializando cliente de Bitbucket...")
+        bitbucket_client = BitbucketClient()
+        logger.info("Cliente de Bitbucket inicializado")
+        
+        # Inicializar servicio de repositorios
+        logger.info("Inicializando servicio de repositorios...")
+        repository_service = RepositoryService(bitbucket_client)
+        logger.info("Servicio de repositorios inicializado")
+        
+        # Obtener proyectos del workspace para mostrar resumen
+        logger.info(f"Obteniendo proyectos del workspace: {workspace_slug}")
+        projects = await bitbucket_client.get_all_workspace_projects(workspace_slug)
+        
+        if not projects:
+            logger.warning(f"No se encontraron proyectos en el workspace: {workspace_slug}")
+            return
+        
+        total_projects = len(projects)
+        logger.info(f"Encontrados {total_projects} proyectos para procesar")
+        
+        # Mostrar resumen de proyectos
+        print(f"\n📊 Resumen del Workspace: {workspace_slug}")
+        print(f"Total de proyectos: {total_projects}")
+        
+        # Mostrar información básica de cada proyecto
+        for i, project in enumerate(projects[:10], 1):  # Mostrar solo los primeros 10
+            project_key = project.get('key', 'N/A')
+            project_name = project.get('name', project_key)
+            is_private = project.get('is_private', True)
+            print(f"{i:2d}. {project_name} ({project_key})")
+            print(f"     Privado: {'Sí' if is_private else 'No'}")
+            print(f"     Descripción: {project.get('description', 'Sin descripción')}")
+            print()
+        
+        if len(projects) > 10:
+            print(f"... y {len(projects) - 10} proyectos más")
+        
+        # Preguntar si sincronizar con base de datos
+        sync_choice = input("\n¿Desea sincronizar estos proyectos con la base de datos? (y/N): ")
+        
+        if sync_choice.lower() in ['y', 'yes']:
+            logger.info("Iniciando sincronización con base de datos")
+            
+            # Sincronizar proyectos usando las funciones centralizadas
+            sync_summary = await repository_service.sync_workspace_projects(
+                workspace_slug, batch_size=10
+            )
+            
+            print(f"\nSincronización completada")
+            print(f"Proyectos procesados: {sync_summary['total_projects']}")
+            print(f"Exitosos: {sync_summary['successful_syncs']}")
+            print(f"Fallidos: {sync_summary['failed_syncs']}")
+            print(f"Tasa de éxito: {sync_summary['success_rate']:.1f}%")
+            print(f"Duración: {sync_summary['duration_seconds']:.1f} segundos")
+            
+            logger.info("Procesamiento completado exitosamente")
+            logger.info("Los proyectos han sido guardados/actualizados en la base de datos")
         else:
-            print("\n❌ El proceso falló")
-            print("   Revisa los errores mostrados arriba")
+            logger.info("Sincronización cancelada por el usuario")
         
     except Exception as e:
-        print(f"\n❌ Error general: {e}")
+        logger.error(f"Error en el procesamiento: {str(e)}")
         sys.exit(1)
     
-    print("\n" + "=" * 60)
+    finally:
+        # Cerrar conexiones
+        try:
+            close_database()
+            logger.info("Conexiones cerradas")
+        except Exception as e:
+            logger.error(f"Error al cerrar conexiones: {str(e)}")
 
 
 if __name__ == "__main__":

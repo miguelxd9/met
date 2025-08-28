@@ -1,44 +1,55 @@
 #!/usr/bin/env python3
 """
-Script principal para procesar y guardar repositorios en la base de datos
+Script para procesar y guardar repositorios en la base de datos usando configuración JSON
 
 Este script lee la configuración de repositorios desde config/repositories.json,
 obtiene información detallada de cada uno desde Bitbucket y los guarda
-en la base de datos PostgreSQL. Si un repositorio ya existe, solo actualiza
-sus datos.
+en la base de datos PostgreSQL usando el mismo sistema avanzado que collect_metrics.py.
+
+Características:
+- Procesamiento en lotes (batch processing)
+- Rate limiting inteligente
+- Pausas automáticas entre lotes
+- Manejo robusto de errores
+- Sincronización completa de repositorios
 """
 
-import os
+import asyncio
 import sys
 import json
-import asyncio
-from datetime import datetime, timezone
-from typing import Dict, List, Any
+import os
+from pathlib import Path
+from typing import Optional, List, Dict, Any
 
-# Agregar el directorio raíz del proyecto al path de Python
-project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-sys.path.insert(0, project_root)
+# Agregar el directorio raíz al path para importar módulos
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from src.database.connection import init_database, get_database_session
-from src.models.repository import Repository
-from src.models.project import Project
-from src.models.workspace import Workspace
 from src.api.bitbucket_client import BitbucketClient
+from src.services.repository_service import RepositoryService
+from src.database.connection import init_database, close_database
+from src.utils.logger import get_logger
+from src.config.settings import get_settings
+
+logger = get_logger(__name__)
 
 
 class RepositoryProcessor:
     """
-    Clase para procesar y guardar repositorios en la base de datos
+    Clase para procesar repositorios usando el sistema avanzado de collect_metrics.py
+    pero con configuración desde archivo JSON
     """
     
     def __init__(self):
         """Inicializar el procesador de repositorios"""
-        self.client = BitbucketClient()
+        self.settings = get_settings()
+        self.bitbucket_client = BitbucketClient()
+        self.repository_service = RepositoryService(self.bitbucket_client)
+        
+        # Estadísticas de procesamiento
         self.stats = {
-            'total_processed': 0,
-            'total_created': 0,
-            'total_updated': 0,
-            'total_errors': 0,
+            'total_repositories': 0,
+            'successful_syncs': 0,
+            'failed_syncs': 0,
             'errors': []
         }
     
@@ -58,6 +69,9 @@ class RepositoryProcessor:
             
             repositories = config.get('repositories', [])
             
+            logger.info(f"Configuración cargada desde: {config_file}")
+            logger.info(f"Total de repositorios configurados: {len(repositories)}")
+            
             print(f"📋 Configuración cargada desde: {config_file}")
             print(f"   📊 Total de repositorios: {len(repositories)}")
             print()
@@ -65,231 +79,113 @@ class RepositoryProcessor:
             return repositories
             
         except FileNotFoundError:
-            print(f"❌ Error: No se encontró el archivo de configuración: {config_file}")
+            error_msg = f"No se encontró el archivo de configuración: {config_file}"
+            logger.error(error_msg)
+            print(f"❌ Error: {error_msg}")
             return []
         except json.JSONDecodeError as e:
-            print(f"❌ Error: El archivo JSON no es válido: {e}")
+            error_msg = f"El archivo JSON no es válido: {e}"
+            logger.error(error_msg)
+            print(f"❌ Error: {error_msg}")
             return []
         except Exception as e:
-            print(f"❌ Error al cargar configuración: {e}")
+            error_msg = f"Error al cargar configuración: {e}"
+            logger.error(error_msg)
+            print(f"❌ Error: {error_msg}")
             return []
     
-    async def process_repository(self, repo_config: Dict[str, Any], session) -> bool:
+    async def process_repositories_batch(
+        self,
+        repositories: List[Dict[str, Any]],
+        batch_size: int = 5
+    ) -> Dict[str, Any]:
         """
-        Procesar un repositorio individual
+        Procesar repositorios en lotes usando el sistema de collect_metrics.py
         
         Args:
-            repo_config: Configuración del repositorio
-            session: Sesión de base de datos
+            repositories: Lista de repositorios a procesar
+            batch_size: Tamaño del lote para procesamiento
             
         Returns:
-            True si se procesó exitosamente, False en caso contrario
+            Resumen del procesamiento
         """
-        workspace_slug = repo_config.get('workspace_slug')
-        repository_slug = repo_config.get('repository_slug')
+        logger.info(f"Iniciando procesamiento de repositorios en lotes - Total: {len(repositories)}, Batch size: {batch_size}")
         
-        print(f"🔍 Procesando: {repository_slug}")
-        print(f"   🏢 Workspace: {workspace_slug}")
+        start_time = asyncio.get_event_loop().time()
+        total_repositories = len(repositories)
+        successful_syncs = 0
+        failed_syncs = 0
         
         try:
-            # Obtener información del repositorio desde Bitbucket
-            print("   📡 Obteniendo datos desde Bitbucket...")
-            repository_data = await self.client.get_repository(workspace_slug, repository_slug)
-            
-            if not repository_data:
-                print("   ❌ No se pudo obtener información del repositorio")
-                self.stats['total_errors'] += 1
-                self.stats['errors'].append(f"Error obteniendo {repository_slug}")
-                return False
-            
-            print("   ✅ Datos obtenidos de Bitbucket")
-            
-            # Extraer datos del repositorio
-            repo_name = repository_data.get('name', repository_slug)
-            project_data = repository_data.get('project', {})
-            project_key = project_data.get('key', 'UNKNOWN')
-            project_name = project_data.get('name', 'Proyecto Desconocido')
-            
-            # Paso 1: Crear o actualizar Workspace
-            print("   🏢 Procesando Workspace...")
-            workspace = await self._process_workspace(workspace_slug, session)
-            if not workspace:
-                return False
-            
-            # Paso 2: Crear o actualizar Project
-            print("   📁 Procesando Project...")
-            project = await self._process_project(project_key, project_name, workspace.id, session)
-            if not project:
-                return False
-            
-            # Paso 3: Crear o actualizar Repository
-            print("   📂 Procesando Repository...")
-            repository_updated = await self._process_repository(
-                repository_data, workspace.id, project.id, session
-            )
-            
-            if repository_updated:
-                print("   ✅ Repositorio procesado exitosamente")
-                self.stats['total_processed'] += 1
-                return True
-            else:
-                print("   ❌ Error al procesar repositorio")
-                self.stats['total_errors'] += 1
-                return False
+            # Procesar en lotes
+            for i in range(0, total_repositories, batch_size):
+                batch = repositories[i:i + batch_size]
+                batch_num = i // batch_size + 1
+                total_batches = (total_repositories + batch_size - 1) // batch_size
                 
+                logger.info(f"Procesando lote de repositorios - Batch: {batch_num}/{total_batches}, Size: {len(batch)}")
+                print(f"📦 Procesando lote {batch_num}/{total_batches} ({len(batch)} repositorios)")
+                
+                for repo_config in batch:
+                    try:
+                        workspace_slug = repo_config.get('workspace_slug')
+                        repository_slug = repo_config.get('repository_slug')
+                        project_key = repo_config.get('project_key')
+                        
+                        print(f"   🔍 Procesando: {repository_slug} (Workspace: {workspace_slug})")
+                        
+                        # Usar el mismo método que collect_metrics.py
+                        await self.repository_service.sync_repository_to_database(
+                            workspace_slug, repository_slug, project_key
+                        )
+                        
+                        print(f"   ✅ {repository_slug} sincronizado exitosamente")
+                        successful_syncs += 1
+                        
+                    except Exception as e:
+                        error_msg = f"Error al sincronizar {repository_slug}: {str(e)}"
+                        logger.error(error_msg)
+                        print(f"   ❌ {error_msg}")
+                        failed_syncs += 1
+                        self.stats['errors'].append(error_msg)
+                
+                # Pausa entre lotes (igual que collect_metrics.py)
+                if i + batch_size < total_repositories:
+                    logger.info(f"Pausa entre lotes - Batch: {batch_num}")
+                    print(f"   ⏳ Pausa entre lotes...")
+                    await asyncio.sleep(1)  # 1 segundo entre lotes
+            
+            end_time = asyncio.get_event_loop().time()
+            duration = end_time - start_time
+            
+            # Actualizar estadísticas
+            self.stats.update({
+                'total_repositories': total_repositories,
+                'successful_syncs': successful_syncs,
+                'failed_syncs': failed_syncs
+            })
+            
+            sync_summary = {
+                'total_repositories': total_repositories,
+                'successful_syncs': successful_syncs,
+                'failed_syncs': failed_syncs,
+                'success_rate': (successful_syncs / total_repositories * 100) if total_repositories > 0 else 0,
+                'duration_seconds': duration,
+                'errors': self.stats['errors']
+            }
+            
+            logger.info(f"Procesamiento de repositorios completado - Summary: {sync_summary}")
+            
+            return sync_summary
+            
         except Exception as e:
-            print(f"   ❌ Error: {e}")
-            self.stats['total_errors'] += 1
-            self.stats['errors'].append(f"Error en {repository_slug}: {str(e)}")
-            return False
-    
-    async def _process_workspace(self, workspace_slug: str, session) -> Workspace:
-        """
-        Crear o actualizar workspace
-        
-        Args:
-            workspace_slug: Slug del workspace
-            session: Sesión de base de datos
-            
-        Returns:
-            Instancia del workspace
-        """
-        workspace = session.query(Workspace).filter_by(slug=workspace_slug).first()
-        
-        if not workspace:
-            # Crear nuevo workspace
-            import uuid
-            workspace_uuid = str(uuid.uuid4())
-            workspace = Workspace(
-                uuid=workspace_uuid,
-                slug=workspace_slug,
-                name=workspace_slug.title(),
-                bitbucket_id=workspace_slug,
-                is_private=True,
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc)
-            )
-            session.add(workspace)
-            session.commit()
-            print(f"      ✅ Workspace '{workspace_slug}' creado")
-            self.stats['total_created'] += 1
-        else:
-            # Actualizar workspace existente
-            workspace.updated_at = datetime.now(timezone.utc)
-            session.commit()
-            print(f"      ✅ Workspace '{workspace_slug}' encontrado")
-        
-        return workspace
-    
-    async def _process_project(self, project_key: str, project_name: str, workspace_id: int, session) -> Project:
-        """
-        Crear o actualizar project
-        
-        Args:
-            project_key: Clave del proyecto
-            project_name: Nombre del proyecto
-            workspace_id: ID del workspace
-            session: Sesión de base de datos
-            
-        Returns:
-            Instancia del project
-        """
-        project = session.query(Project).filter_by(key=project_key).first()
-        
-        if not project:
-            # Crear nuevo project
-            import uuid
-            project_uuid = str(uuid.uuid4())
-            project = Project(
-                uuid=project_uuid,
-                key=project_key,
-                name=project_name,
-                workspace_id=workspace_id,
-                bitbucket_id=project_key,
-                is_private=True,
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc)
-            )
-            session.add(project)
-            session.commit()
-            print(f"      ✅ Project '{project_key}' creado")
-            self.stats['total_created'] += 1
-        else:
-            # Actualizar project existente
-            project.name = project_name
-            project.updated_at = datetime.now(timezone.utc)
-            session.commit()
-            print(f"      ✅ Project '{project_key}' encontrado")
-        
-        return project
-    
-    async def _process_repository(self, repository_data: Dict[str, Any], workspace_id: int, project_id: int, session) -> bool:
-        """
-        Crear o actualizar repository
-        
-        Args:
-            repository_data: Datos del repositorio desde Bitbucket
-            workspace_id: ID del workspace
-            project_id: ID del project
-            session: Sesión de base de datos
-            
-        Returns:
-            True si se procesó exitosamente
-        """
-        repo_slug = repository_data.get('slug')
-        repo_name = repository_data.get('name', repo_slug)
-        
-        # Buscar repositorio existente por slug (identidad única)
-        existing_repo = session.query(Repository).filter_by(slug=repo_slug).first()
-        
-        if existing_repo:
-            # Actualizar repositorio existente
-            existing_repo.name = repo_name
-            existing_repo.workspace_id = workspace_id
-            existing_repo.project_id = project_id
-            existing_repo.size_bytes = repository_data.get('size', 0)
-            existing_repo.last_activity_date = datetime.now(timezone.utc)
-            existing_repo.updated_at = datetime.now(timezone.utc)
-            
-            # Actualizar campos adicionales si están disponibles
-            if 'description' in repository_data:
-                existing_repo.description = repository_data.get('description')
-            if 'language' in repository_data:
-                existing_repo.language = repository_data.get('language')
-            if 'is_private' in repository_data:
-                existing_repo.is_private = repository_data.get('is_private', True)
-            
-            session.commit()
-            print(f"      ✅ Repository '{repo_slug}' actualizado")
-            self.stats['total_updated'] += 1
-        else:
-            # Crear nuevo repositorio
-            import uuid
-            repo_uuid = str(uuid.uuid4())
-            new_repo = Repository(
-                uuid=repo_uuid,
-                name=repo_name,
-                slug=repo_slug,
-                workspace_id=workspace_id,
-                project_id=project_id,
-                bitbucket_id=repo_slug,
-                size_bytes=repository_data.get('size', 0),
-                is_private=repository_data.get('is_private', True),
-                description=repository_data.get('description'),
-                language=repository_data.get('language'),
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc)
-            )
-            session.add(new_repo)
-            session.commit()
-            print(f"      ✅ Repository '{repo_slug}' creado")
-            self.stats['total_created'] += 1
-        
-        return True
+            error_msg = f"Error en procesamiento de repositorios: {str(e)}"
+            logger.error(error_msg)
+            raise
     
     async def process_all_repositories(self, config_file: str = "config/repositories.json") -> bool:
         """
-        Procesar todos los repositorios configurados
+        Procesar todos los repositorios configurados usando el sistema avanzado
         
         Args:
             config_file: Ruta del archivo de configuración
@@ -297,72 +193,106 @@ class RepositoryProcessor:
         Returns:
             True si se procesaron exitosamente
         """
-        print("🚀 Iniciando procesamiento de repositorios...")
+        logger.info("Iniciando procesamiento de repositorios con sistema avanzado")
+        
+        print("🚀 Procesador de Repositorios Avanzado")
         print("=" * 60)
-        
-        # Cargar configuración
-        repositories = await self.load_repositories_config(config_file)
-        if not repositories:
-            return False
-        
-        # Inicializar base de datos
-        print("🗄️  Inicializando base de datos...")
-        init_database()
-        print("✅ Base de datos inicializada")
-        
-        # Obtener sesión de base de datos
-        print("🔌 Obteniendo sesión de base de datos...")
-        session = get_database_session()
-        print("✅ Sesión obtenida")
         print()
         
         try:
-            # Procesar cada repositorio
-            for i, repo_config in enumerate(repositories, 1):
-                print(f"📋 [{i}/{len(repositories)}] Procesando repositorio...")
-                await self.process_repository(repo_config, session)
-                print()  # Línea en blanco para separar repositorios
+            # Inicializar base de datos
+            print("🗄️  Inicializando base de datos...")
+            init_database()
+            logger.info("Base de datos inicializada")
+            print("✅ Base de datos inicializada")
             
-            # Mostrar resumen final
-            print("🎯 RESUMEN DEL PROCESAMIENTO")
-            print("=" * 40)
-            print(f"📊 Total procesados: {self.stats['total_processed']}")
-            print(f"🆕 Total creados: {self.stats['total_created']}")
-            print(f"🔄 Total actualizados: {self.stats['total_updated']}")
-            print(f"❌ Total errores: {self.stats['total_errors']}")
+            # Cargar configuración
+            print("📋 Cargando configuración de repositorios...")
+            repositories = await self.load_repositories_config(config_file)
             
-            if self.stats['errors']:
-                print("\n⚠️  Errores encontrados:")
-                for error in self.stats['errors']:
-                    print(f"   • {error}")
+            if not repositories:
+                print("❌ No se encontraron repositorios para procesar")
+                return False
             
-            print("\n🎉 ¡Procesamiento completado!")
-            return True
+            # Mostrar resumen de repositorios
+            print(f"\n📊 Resumen de Repositorios a Procesar")
+            print(f"Total de repositorios: {len(repositories)}")
             
+            # Mostrar información básica de cada repositorio
+            for i, repo in enumerate(repositories[:10], 1):  # Mostrar solo los primeros 10
+                workspace = repo.get('workspace_slug', 'N/A')
+                repository = repo.get('repository_slug', 'N/A')
+                project = repo.get('project_key', 'N/A')
+                print(f"{i:2d}. {repository} (Workspace: {workspace}, Project: {project})")
+            
+            if len(repositories) > 10:
+                print(f"... y {len(repositories) - 10} repositorios más")
+            
+            # Preguntar si procesar
+            print()
+            process_choice = input("¿Desea procesar estos repositorios con el sistema avanzado? (y/N): ")
+            
+            if process_choice.lower() in ['y', 'yes']:
+                logger.info("Iniciando procesamiento con sistema avanzado")
+                print("\n🔄 Iniciando procesamiento avanzado...")
+                
+                # Procesar repositorios usando el sistema de collect_metrics.py
+                sync_summary = await self.process_repositories_batch(
+                    repositories, batch_size=5
+                )
+                
+                # Mostrar resumen final
+                print(f"\n✅ Procesamiento completado")
+                print(f"Repositorios procesados: {sync_summary['total_repositories']}")
+                print(f"Exitosos: {sync_summary['successful_syncs']}")
+                print(f"Fallidos: {sync_summary['failed_syncs']}")
+                print(f"Tasa de éxito: {sync_summary['success_rate']:.1f}%")
+                print(f"Duración: {sync_summary['duration_seconds']:.1f} segundos")
+                
+                if sync_summary['errors']:
+                    print(f"\n⚠️  Errores encontrados ({len(sync_summary['errors'])}):")
+                    for error in sync_summary['errors'][:5]:  # Mostrar solo los primeros 5
+                        print(f"   • {error}")
+                    if len(sync_summary['errors']) > 5:
+                        print(f"   ... y {len(sync_summary['errors']) - 5} errores más")
+                
+                return True
+            else:
+                print("❌ Procesamiento cancelado por el usuario")
+                return False
+                
         except Exception as e:
-            print(f"❌ Error durante el procesamiento: {e}")
-            session.rollback()
+            error_msg = f"Error durante el procesamiento: {str(e)}"
+            logger.error(error_msg)
+            print(f"❌ {error_msg}")
             return False
+        
         finally:
-            session.close()
-            print("🔌 Sesión de base de datos cerrada")
+            # Cerrar conexiones
+            try:
+                close_database()
+                logger.info("Conexiones cerradas")
+            except Exception as e:
+                logger.error(f"Error al cerrar conexiones: {str(e)}")
 
 
 async def main():
-    """Función principal"""
-    print("🚀 Procesador de Repositorios de Bitbucket")
-    print("=" * 60)
-    print()
-    
-    processor = RepositoryProcessor()
-    success = await processor.process_all_repositories()
-    
-    if success:
-        print("\n✅ Proceso completado exitosamente")
-        print("   Los repositorios han sido guardados/actualizados en la base de datos")
-    else:
-        print("\n❌ El proceso falló")
-        print("   Revisa los errores mostrados arriba")
+    """Función principal del script"""
+    try:
+        processor = RepositoryProcessor()
+        success = await processor.process_all_repositories()
+        
+        if success:
+            print("\n✅ Proceso completado exitosamente")
+            print("   Los repositorios han sido procesados y guardados en la base de datos")
+        else:
+            print("\n❌ El proceso falló")
+            print("   Revisa los errores mostrados arriba")
+        
+    except Exception as e:
+        logger.error(f"Error en la ejecución principal: {str(e)}")
+        print(f"❌ Error crítico: {str(e)}")
+        sys.exit(1)
     
     print("\n" + "=" * 60)
 

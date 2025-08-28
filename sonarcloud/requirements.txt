@@ -1,0 +1,36 @@
+# Dependencias del proyecto SonarCloud Metrics DevOps
+# Python 3.13.7
+
+# HTTP requests y API
+requests==2.31.0
+httpx==0.25.2
+
+# Base de datos
+psycopg-binary==3.2.9
+sqlalchemy[asyncio]==2.0.43
+alembic==1.13.1
+
+# Configuración y variables de entorno
+python-dotenv==1.0.0
+pydantic==2.11.7
+pydantic-settings==2.1.0
+
+# Logging y monitoreo
+structlog==23.2.0
+rich==13.7.0
+
+# Utilidades
+python-dateutil==2.8.2
+pytz==2023.3
+click==8.1.7
+
+# Testing
+pytest==7.4.3
+pytest-asyncio==0.21.1
+pytest-cov==4.1.0
+
+# Desarrollo
+black==23.11.0
+flake8==6.1.0
+mypy==1.7.1
+isort==5.12.0
