@@ -1,9 +1,11 @@
 """
-Cliente de la API de Bitbucket para el sistema de métricas DevOps
+Clientes de API para el sistema de métricas DevOps
 """
 
 from .bitbucket_client import BitbucketClient
+from .sonarcloud_client import SonarCloudClient
 
 __all__ = [
     'BitbucketClient',
+    'SonarCloudClient',
 ]

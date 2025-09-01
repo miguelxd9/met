@@ -1,5 +1,5 @@
 """
-Configuración de conexión a la base de datos PostgreSQL
+Configuración de conexión a la base de datos SQL Server Azure
 """
 
 from contextlib import contextmanager
@@ -15,10 +15,10 @@ logger = get_logger(__name__)
 
 class DatabaseManager:
     """
-    Gestor de conexiones a la base de datos PostgreSQL
+    Gestor de conexiones a la base de datos SQL Server Azure
     
     Maneja:
-    - Conexión a PostgreSQL
+    - Conexión a SQL Server Azure via ODBC
     - Pool de conexiones
     - Sesiones de SQLAlchemy
     - Configuración de la base de datos
@@ -38,11 +38,8 @@ class DatabaseManager:
             return
         
         try:
-            # Crear engine de SQLAlchemy
-            # Forzar el uso de psycopg en lugar de psycopg2
+            # Crear engine de SQLAlchemy para SQL Server Azure
             database_url = self.settings.database_url
-            if database_url.startswith("postgresql://"):
-                database_url = database_url.replace("postgresql://", "postgresql+psycopg://")
             
             self.engine = create_engine(
                 database_url,
@@ -53,8 +50,8 @@ class DatabaseManager:
                 pool_recycle=3600,
                 echo=False,  # Cambiar a True para debug
                 connect_args={
-                    "connect_timeout": 10,
-                    "options": "-c application_name=bitbucket_metrics -c timezone=UTC"
+                    "timeout": 30,
+                    "autocommit": False
                 }
             )
             
@@ -85,15 +82,10 @@ class DatabaseManager:
         
         # Configurar eventos del pool
         @event.listens_for(self.engine, "connect")
-        def set_sqlite_pragma(dbapi_connection, connection_record):
-            """Configurar parámetros de PostgreSQL"""
-            if hasattr(dbapi_connection, 'set_session'):
-                # Configurar timezone y encoding
-                dbapi_connection.set_session(
-                    autocommit=False,
-                    readonly=False,
-                    deferrable=False
-                )
+        def set_sqlserver_params(dbapi_connection, connection_record):
+            """Configurar parámetros de SQL Server"""
+            # Configurar parámetros específicos de SQL Server si es necesario
+            pass
         
         @event.listens_for(self.engine, "checkout")
         def receive_checkout(dbapi_connection, connection_record, connection_proxy):

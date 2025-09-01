@@ -10,6 +10,14 @@ from .repositories import (
     CommitRepository,
     PullRequestRepository
 )
+from .sonarcloud_repositories import (
+    OrganizationRepository,
+    SonarCloudProjectRepository,
+    IssueRepository,
+    SecurityHotspotRepository,
+    QualityGateRepository,
+    MetricRepository
+)
 
 __all__ = [
     'get_database_session',
@@ -18,5 +26,12 @@ __all__ = [
     'ProjectRepository',
     'RepositoryRepository',
     'CommitRepository',
-    'PullRequestRepository'
+    'PullRequestRepository',
+    # SonarCloud repositories
+    'OrganizationRepository',
+    'SonarCloudProjectRepository',
+    'IssueRepository',
+    'SecurityHotspotRepository',
+    'QualityGateRepository',
+    'MetricRepository'
 ]

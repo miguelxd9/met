@@ -34,11 +34,30 @@ class Settings(BaseSettings):
         description="Workspace principal de Bitbucket"
     )
     
-    # Configuración de Base de Datos
+    # Configuración de SonarCloud API
+    sonarcloud_token: str = Field(
+        default="",
+        env="SONARCLOUD_TOKEN",
+        description="Token de autenticación de SonarCloud"
+    )
+    
+    sonarcloud_organization: str = Field(
+        default="interbank",
+        env="SONARCLOUD_ORGANIZATION",
+        description="Organización principal de SonarCloud"
+    )
+    
+    sonarcloud_api_base_url: str = Field(
+        default="https://sonarcloud.io/api",
+        env="SONARCLOUD_API_BASE_URL",
+        description="URL base de la API de SonarCloud"
+    )
+    
+    # Configuración de Base de Datos SQL Server Azure
     database_url: str = Field(
-        default="postgresql://localhost:5432/bitbucket_metrics",
+        default="mssql+pyodbc:///?odbc_connect=DRIVER={ODBC Driver 18 for SQL Server};SERVER=your-server.database.windows.net;DATABASE=bitbucket_metrics;Authentication=ActiveDirectoryInteractive;Encrypt=yes;TrustServerCertificate=no;Connection Timeout=30;",
         env="DATABASE_URL",
-        description="URL de conexión a PostgreSQL"
+        description="URL de conexión a SQL Server Azure con AAD Interactive"
     )
     
     # Configuración de API
@@ -106,12 +125,20 @@ class Settings(BaseSettings):
             raise ValueError("Las credenciales de Bitbucket deben estar configuradas")
         return v
     
+    @field_validator('sonarcloud_token', 'sonarcloud_organization')
+    @classmethod
+    def validate_sonarcloud_credentials(cls, v: str) -> str:
+        """Validar que las credenciales de SonarCloud estén configuradas"""
+        if not v:
+            raise ValueError("Las credenciales de SonarCloud deben estar configuradas")
+        return v
+    
     @field_validator('database_url')
     @classmethod
     def validate_database_url(cls, v: str) -> str:
         """Validar formato de URL de base de datos"""
-        if not v.startswith(('postgresql://', 'postgres://')):
-            raise ValueError("DATABASE_URL debe ser una URL válida de PostgreSQL")
+        if not v.startswith(('postgresql://', 'postgres://', 'mssql+pyodbc://')):
+            raise ValueError("DATABASE_URL debe ser una URL válida de PostgreSQL o SQL Server Azure")
         return v
     
     @field_validator('log_level')

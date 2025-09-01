@@ -31,10 +31,7 @@ class Workspace(Base):
     website = Column(String(500), nullable=True)
     location = Column(String(255), nullable=True)
     
-    # Campos de métricas
-    total_repositories = Column(Integer, default=0, nullable=False)
-    total_projects = Column(Integer, default=0, nullable=False)
-    total_members = Column(Integer, default=0, nullable=False)
+
     
     # Relaciones
     projects = relationship("Project", back_populates="workspace", cascade="all, delete-orphan")
@@ -84,15 +81,4 @@ class Workspace(Base):
         self.website = data.get('website', self.website)
         self.location = data.get('location', self.location)
     
-    def update_metrics(self, total_repos: int, total_projects: int, total_members: int) -> None:
-        """
-        Actualizar métricas del workspace
-        
-        Args:
-            total_repos: Total de repositorios
-            total_projects: Total de proyectos
-            total_members: Total de miembros
-        """
-        self.total_repositories = total_repos
-        self.total_projects = total_projects
-        self.total_members = total_members
+

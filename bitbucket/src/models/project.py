@@ -37,10 +37,7 @@ class Project(Base):
     # Relación con Repositorios
     repositories = relationship("Repository", back_populates="project", cascade="all, delete-orphan")
     
-    # Campos de métricas
-    total_repositories = Column(Integer, default=0, nullable=False)
-    total_commits = Column(Integer, default=0, nullable=False)
-    total_pull_requests = Column(Integer, default=0, nullable=False)
+
     
     def __repr__(self) -> str:
         """Representación string del proyecto"""
@@ -86,15 +83,4 @@ class Project(Base):
         self.is_private = data.get('is_private', self.is_private)
         self.avatar_url = data.get('avatar_url', self.avatar_url)
     
-    def update_metrics(self, total_repos: int, total_commits: int, total_prs: int) -> None:
-        """
-        Actualizar métricas del proyecto
-        
-        Args:
-            total_repos: Total de repositorios
-            total_commits: Total de commits
-            total_prs: Total de pull requests
-        """
-        self.total_repositories = total_repos
-        self.total_commits = total_commits
-        self.total_pull_requests = total_prs
+

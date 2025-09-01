@@ -105,19 +105,7 @@ class WorkspaceRepository(BaseRepository):
             logger.info(f"Nuevo workspace creado - ID: {new_workspace.id}, Slug: {new_workspace.slug}, Name: {new_workspace.name}")
             return new_workspace
     
-    def update_metrics(
-        self,
-        workspace_id: int,
-        total_repos: int,
-        total_projects: int,
-        total_members: int
-    ) -> None:
-        """Actualizar métricas del workspace"""
-        workspace = self.get_by_id(workspace_id)
-        if workspace:
-            workspace.update_metrics(total_repos, total_projects, total_members)
-            self.commit()
-            logger.debug(f"Métricas del workspace actualizadas - Workspace ID: {workspace_id}, Total repos: {total_repos}, Total projects: {total_projects}, Total members: {total_members}")
+
 
 
 class ProjectRepository(BaseRepository):
@@ -189,19 +177,7 @@ class ProjectRepository(BaseRepository):
             logger.info(f"Nuevo proyecto creado - ID: {new_project.id}, Key: {new_project.key}, Name: {new_project.name}, Workspace ID: {workspace_id}")
             return new_project
     
-    def update_metrics(
-        self,
-        project_id: int,
-        total_repos: int,
-        total_commits: int,
-        total_prs: int
-    ) -> None:
-        """Actualizar métricas del proyecto"""
-        project = self.get_by_id(project_id)
-        if project:
-            project.update_metrics(total_repos, total_commits, total_prs)
-            self.commit()
-            logger.debug(f"Métricas del proyecto actualizadas - Project ID: {project_id}, Total repos: {total_repos}, Total commits: {total_commits}, Total PRs: {total_prs}")
+
 
 
 class RepositoryRepository(BaseRepository):
@@ -248,24 +224,7 @@ class RepositoryRepository(BaseRepository):
             joinedload(Repository.pull_requests)
         ).all()
     
-    def get_by_compliance_score_range(
-        self,
-        min_score: float,
-        max_score: float
-    ) -> List[Repository]:
-        """Obtener repositorios por rango de score de cumplimiento DevOps"""
-        return self.session.query(Repository).filter(
-            and_(
-                Repository.devops_compliance_score >= min_score,
-                Repository.devops_compliance_score <= max_score
-            )
-        ).all()
-    
-    def get_low_compliance_repositories(self, threshold: float = 50.0) -> List[Repository]:
-        """Obtener repositorios con bajo cumplimiento DevOps"""
-        return self.session.query(Repository).filter(
-            Repository.devops_compliance_score < threshold
-        ).all()
+
     
     def create_or_update(
         self,
@@ -330,22 +289,6 @@ class RepositoryRepository(BaseRepository):
         if not repository:
             return None
         
-        # Contar commits y pull requests
-        commits_count = self.session.query(Commit).filter(
-            Commit.repository_id == repository_id
-        ).count()
-        
-        pull_requests_count = self.session.query(PullRequest).filter(
-            PullRequest.repository_id == repository_id
-        ).count()
-        
-        open_pull_requests_count = self.session.query(PullRequest).filter(
-            and_(
-                PullRequest.repository_id == repository_id,
-                PullRequest.state == 'OPEN'
-            )
-        ).count()
-        
         return {
             'id': repository.id,
             'name': repository.name,
@@ -353,11 +296,6 @@ class RepositoryRepository(BaseRepository):
             'language': repository.language,
             'is_private': repository.is_private,
             'size_bytes': repository.size_bytes,
-            'total_commits': commits_count,
-            'total_pull_requests': pull_requests_count,
-            'open_pull_requests': open_pull_requests_count,
-            'devops_compliance': repository.get_devops_compliance_summary(),
-            'last_activity': repository.last_activity_date.isoformat() if repository.last_activity_date else None,
             'workspace': repository.workspace.name if repository.workspace else None,
             'project': repository.project.name if repository.project else None
         }
@@ -439,25 +377,13 @@ class CommitRepository(BaseRepository):
             return new_commit
     
     def get_commit_statistics(self, repository_id: int) -> Dict[str, Any]:
-        """Obtener estadísticas de commits de un repositorio"""
-        stats = self.session.query(
-            func.count(Commit.id).label('total_commits'),
-            func.sum(Commit.additions).label('total_additions'),
-            func.sum(Commit.deletions).label('total_deletions'),
-            func.sum(Commit.total_changes).label('total_changes'),
-            func.avg(Commit.additions).label('avg_additions'),
-            func.avg(Commit.deletions).label('avg_deletions'),
-            func.avg(Commit.total_changes).label('avg_changes')
-        ).filter(Commit.repository_id == repository_id).first()
-        
+        """Obtener estadísticas básicas de commits de un repositorio"""
+        # Solo retornar información básica, sin cálculos
         return {
-            'total_commits': stats.total_commits or 0,
-            'total_additions': stats.total_additions or 0,
-            'total_deletions': stats.total_deletions or 0,
-            'total_changes': stats.total_changes or 0,
-            'avg_additions': float(stats.avg_additions or 0),
-            'avg_deletions': float(stats.avg_deletions or 0),
-            'avg_changes': float(stats.avg_changes or 0)
+            'repository_id': repository_id,
+            'has_commits': self.session.query(Commit).filter(
+                Commit.repository_id == repository_id
+            ).first() is not None
         }
 
 
@@ -543,16 +469,6 @@ class PullRequestRepository(BaseRepository):
     
     def get_pull_request_statistics(self, repository_id: int) -> Dict[str, Any]:
         """Obtener estadísticas de pull requests de un repositorio"""
-        stats = self.session.query(
-            func.count(PullRequest.id).label('total_prs'),
-            func.sum(PullRequest.additions).label('total_additions'),
-            func.sum(PullRequest.deletions).label('total_deletions'),
-            func.sum(PullRequest.total_changes).label('total_changes'),
-            func.avg(PullRequest.additions).label('avg_additions'),
-            func.avg(PullRequest.deletions).label('avg_deletions'),
-            func.avg(PullRequest.total_changes).label('avg_changes')
-        ).filter(PullRequest.repository_id == repository_id).first()
-        
         # Contar por estado
         open_count = self.session.query(PullRequest).filter(
             and_(
@@ -575,15 +491,11 @@ class PullRequestRepository(BaseRepository):
             )
         ).count()
         
+        total_prs = open_count + merged_count + declined_count
+        
         return {
-            'total_prs': stats.total_prs or 0,
+            'total_prs': total_prs,
             'open_prs': open_count,
             'merged_prs': merged_count,
-            'declined_prs': declined_count,
-            'total_additions': stats.total_additions or 0,
-            'total_deletions': stats.total_deletions or 0,
-            'total_changes': stats.total_changes or 0,
-            'avg_additions': float(stats.avg_additions or 0),
-            'avg_deletions': float(stats.avg_deletions or 0),
-            'avg_changes': float(stats.avg_changes or 0)
+            'declined_prs': declined_count
         }

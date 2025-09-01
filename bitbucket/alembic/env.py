@@ -47,12 +47,8 @@ def get_database_url():
             settings = get_settings()
             database_url = settings.database_url
         except Exception:
-            # Default fallback
-            database_url = "postgresql://usuario:password@localhost:5432/bitbucket_metrics"
-    
-    # Forzar el uso de psycopg en lugar de psycopg2
-    if database_url.startswith("postgresql://"):
-        database_url = database_url.replace("postgresql://", "postgresql+psycopg://")
+            # Default fallback for SQL Server Azure
+            database_url = "mssql+pyodbc:///?odbc_connect=DRIVER={ODBC Driver 18 for SQL Server};SERVER=your-server.database.windows.net;DATABASE=bitbucket_metrics;Authentication=ActiveDirectoryInteractive;Encrypt=yes;TrustServerCertificate=no;Connection Timeout=30;"
     
     return database_url
 
@@ -94,7 +90,7 @@ def run_migrations_online() -> None:
     # Update the config with the actual database URL
     config.set_main_option("sqlalchemy.url", database_url)
     
-    # Crear engine con configuración específica para psycopg
+    # Crear engine con configuración específica para SQL Server Azure
     connectable = create_engine(
         database_url,
         poolclass=pool.NullPool,

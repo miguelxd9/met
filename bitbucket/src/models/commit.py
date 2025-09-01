@@ -31,15 +31,8 @@ class Commit(Base):
     commit_date = Column(DateTime(timezone=True), nullable=False)
     author_date = Column(DateTime(timezone=True), nullable=False)
     
-    # Campos de métricas
-    additions = Column(Integer, default=0, nullable=False)
-    deletions = Column(Integer, default=0, nullable=False)
-    total_changes = Column(Integer, default=0, nullable=False)
-    
-    # Campos de calidad
+    # Campos de metadatos de Bitbucket
     is_merge_commit = Column(Boolean, default=False, nullable=False)
-    has_tests = Column(Boolean, default=False, nullable=False)
-    has_documentation = Column(Boolean, default=False, nullable=False)
     
     # Relación con Repository
     repository_id = Column(Integer, ForeignKey('repositories.id'), nullable=False)
@@ -79,9 +72,6 @@ class Commit(Base):
             author_email=data.get('author', {}).get('user', {}).get('email', ''),
             commit_date=commit_date,
             author_date=author_date,
-            additions=data.get('additions', 0),
-            deletions=data.get('deletions', 0),
-            total_changes=data.get('total_changes', 0),
             is_merge_commit=data.get('is_merge_commit', False),
             repository_id=repository_id
         )
@@ -97,49 +87,22 @@ class Commit(Base):
         self.author_name = data.get('author', {}).get('raw', self.author_name)
         self.author_email = data.get('author', {}).get('user', {}).get('email', self.author_email)
         
-        # Actualizar métricas
-        self.additions = data.get('additions', self.additions)
-        self.deletions = data.get('deletions', self.deletions)
-        self.total_changes = data.get('total_changes', self.total_changes)
+        # Actualizar metadatos
         self.is_merge_commit = data.get('is_merge_commit', self.is_merge_commit)
     
-    def update_quality_metrics(
-        self,
-        has_tests: bool = None,
-        has_documentation: bool = None
-    ) -> None:
-        """
-        Actualizar métricas de calidad del commit
-        
-        Args:
-            has_tests: El commit incluye tests
-            has_documentation: El commit incluye documentación
-        """
-        if has_tests is not None:
-            self.has_tests = has_tests
-        if has_documentation is not None:
-            self.has_documentation = has_documentation
+
     
     def get_change_summary(self) -> dict:
         """
-        Obtener resumen de cambios del commit
+        Obtener resumen del commit
         
         Returns:
-            dict: Resumen de cambios
+            dict: Resumen del commit
         """
         return {
             'hash': self.hash,
             'message': self.message,
             'author': self.author_name,
             'date': self.commit_date.isoformat(),
-            'changes': {
-                'additions': self.additions,
-                'deletions': self.deletions,
-                'total': self.total_changes
-            },
-            'quality': {
-                'has_tests': self.has_tests,
-                'has_documentation': self.has_documentation,
-                'is_merge': self.is_merge_commit
-            }
+            'is_merge': self.is_merge_commit
         }

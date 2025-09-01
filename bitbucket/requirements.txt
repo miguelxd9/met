@@ -5,8 +5,9 @@
 requests==2.31.0
 httpx==0.25.2
 
-# Base de datos
-psycopg-binary==3.2.9
+# Base de datos SQL Server Azure
+pyodbc==5.2.0
+azure-identity==1.15.0
 sqlalchemy[asyncio]==2.0.43
 alembic==1.13.1
 

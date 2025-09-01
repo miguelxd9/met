@@ -102,9 +102,7 @@ async def collect_workspace_metrics(
         # Mostrar información básica de cada repositorio
         for i, repo in enumerate(repositories[:10], 1):  # Mostrar solo los primeros 10
             print(f"{i:2d}. {repo.get('name', 'N/A')} ({repo.get('language', 'N/A')})")
-            print(f"     Commits: {repo.get('commits_count', 0)}")
-            print(f"     PRs: {repo.get('pull_requests_count', 0)}")
-            print(f"     Tamaño: {repo.get('size', 0)} bytes")
+            print(f"     Tamaño: {repo.get('size_bytes', 0)} bytes")
             print()
         
         if len(repositories) > 10:
@@ -164,9 +162,7 @@ async def collect_project_metrics(
         # Mostrar información básica de cada repositorio
         for i, repo in enumerate(repositories, 1):
             print(f"{i:2d}. {repo.get('name', 'N/A')} ({repo.get('language', 'N/A')})")
-            print(f"     Commits: {repo.get('commits_count', 0)}")
-            print(f"     PRs: {repo.get('pull_requests_count', 0)}")
-            print(f"     Tamaño: {repo.get('size', 0)} bytes")
+            print(f"     Tamaño: {repo.get('size_bytes', 0)} bytes")
             print()
         
         # Preguntar si sincronizar con base de datos
@@ -221,9 +217,7 @@ async def collect_repository_metrics(
         print(f"Workspace: {workspace_slug}")
         print(f"Lenguaje: {repository.get('language', 'N/A')}")
         print(f"Privado: {'Sí' if repository.get('is_private') else 'No'}")
-        print(f"Commits: {repository.get('commits_count', 0)}")
-        print(f"Pull Requests: {repository.get('pull_requests_count', 0)}")
-        print(f"Tamaño: {repository.get('size', 0)} bytes")
+        print(f"Tamaño: {repository.get('size_bytes', 0)} bytes")
         
         if repository.get('description'):
             print(f"Descripción: {repository['description']}")
@@ -243,9 +237,8 @@ async def collect_repository_metrics(
                 if sync_result:
                     print(f"\n✅ Repositorio sincronizado exitosamente")
                     print(f"ID en BD: {sync_result['id']}")
-                    print(f"Total commits: {sync_result['total_commits']}")
-                    print(f"Total PRs: {sync_result['total_pull_requests']}")
-                    print(f"PRs abiertos: {sync_result['open_pull_requests']}")
+                    print(f"Slug: {sync_result['slug']}")
+                    print(f"Nombre: {sync_result['name']}")
                 else:
                     print(f"❌ Error al sincronizar el repositorio")
                     

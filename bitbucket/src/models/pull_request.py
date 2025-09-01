@@ -41,16 +41,7 @@ class PullRequest(Base):
     closed_date = Column(DateTime(timezone=True), nullable=True)
     merged_date = Column(DateTime(timezone=True), nullable=True)
     
-    # Campos de métricas
-    additions = Column(Integer, default=0, nullable=False)
-    deletions = Column(Integer, default=0, nullable=False)
-    total_changes = Column(Integer, default=0, nullable=False)
-    
-    # Campos de calidad
-    has_tests = Column(Boolean, default=False, nullable=False)
-    has_documentation = Column(Boolean, default=False, nullable=False)
-    has_reviewers = Column(Boolean, default=False, nullable=False)
-    is_approved = Column(Boolean, default=False, nullable=False)
+
     
     # Relación con Repository
     repository_id = Column(Integer, ForeignKey('repositories.id'), nullable=False)
@@ -108,9 +99,7 @@ class PullRequest(Base):
             updated_date=updated_date,
             closed_date=closed_date,
             merged_date=merged_date,
-            additions=data.get('additions', 0),
-            deletions=data.get('deletions', 0),
-            total_changes=data.get('total_changes', 0),
+            
             repository_id=repository_id
         )
     
@@ -145,35 +134,9 @@ class PullRequest(Base):
         if data.get('merged_on'):
             self.merged_date = datetime.fromisoformat(data.get('merged_on').replace('Z', '+00:00'))
         
-        # Actualizar métricas
-        self.additions = data.get('additions', self.additions)
-        self.deletions = data.get('deletions', self.deletions)
-        self.total_changes = data.get('total_changes', self.total_changes)
+
     
-    def update_quality_metrics(
-        self,
-        has_tests: bool = None,
-        has_documentation: bool = None,
-        has_reviewers: bool = None,
-        is_approved: bool = None
-    ) -> None:
-        """
-        Actualizar métricas de calidad del pull request
-        
-        Args:
-            has_tests: El PR incluye tests
-            has_documentation: El PR incluye documentación
-            has_reviewers: El PR tiene revisores asignados
-            is_approved: El PR está aprobado
-        """
-        if has_tests is not None:
-            self.has_tests = has_tests
-        if has_documentation is not None:
-            self.has_documentation = has_documentation
-        if has_reviewers is not None:
-            self.has_reviewers = has_reviewers
-        if is_approved is not None:
-            self.is_approved = is_approved
+
     
     def get_summary(self) -> dict:
         """
@@ -189,18 +152,7 @@ class PullRequest(Base):
             'created_date': self.created_date.isoformat(),
             'updated_date': self.updated_date.isoformat(),
             'closed_date': self.closed_date.isoformat() if self.closed_date else None,
-            'merged_date': self.merged_date.isoformat() if self.merged_date else None,
-            'changes': {
-                'additions': self.additions,
-                'deletions': self.deletions,
-                'total': self.total_changes
-            },
-            'quality': {
-                'has_tests': self.has_tests,
-                'has_documentation': self.has_documentation,
-                'has_reviewers': self.has_reviewers,
-                'is_approved': self.is_approved
-            }
+            'merged_date': self.merged_date.isoformat() if self.merged_date else None
         }
     
     def is_active(self) -> bool:

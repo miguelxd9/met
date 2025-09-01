@@ -192,8 +192,8 @@ class RepositoryService:
             # Guardar en base de datos
             with get_db_session() as session:
                 repo_repo = RepositoryRepository(session)
-                commit_repo = CommitRepository(session)
-                pr_repo = PullRequestRepository(session)
+                #commit_repo = CommitRepository(session)
+                #pr_repo = PullRequestRepository(session)
                 
                 # Crear o actualizar repositorio
                 repository = repo_repo.create_or_update(
@@ -314,19 +314,7 @@ class RepositoryService:
             if project_key:
                 enriched_data['project_key'] = project_key
             
-            # Agregar métricas básicas si no están disponibles
-            if 'commits_count' not in enriched_data:
-                enriched_data['commits_count'] = 0
-            if 'pull_requests_count' not in enriched_data:
-                enriched_data['pull_requests_count'] = 0
-            if 'size' not in enriched_data:
-                enriched_data['size'] = 0
-            
-            # Calcular métricas adicionales
-            enriched_data['total_lines'] = (
-                enriched_data.get('additions', 0) + 
-                enriched_data.get('deletions', 0)
-            )
+
             
             # Agregar timestamp de enriquecimiento
             enriched_data['enriched_at'] = datetime.now().isoformat()
